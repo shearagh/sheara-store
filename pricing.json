@@ -1,0 +1,25 @@
+{
+  "currency": {
+    "usdToGhsRate": 11.5
+  },
+  "products": {
+    "lotion-50": {
+      "name": "Sheara Lotion — 50ml",
+      "priceGhs": 15,
+      "priceUsd": 1.3,
+      "image": "assets/lotion-50ml.jpeg"
+    },
+    "lotion-100": {
+      "name": "Sheara Lotion — 100ml",
+      "priceGhs": 25,
+      "priceUsd": 2.17,
+      "image": "assets/lotion-100ml.jpeg"
+    },
+    "glow-cream": {
+      "name": "Sheara Glow Body Cream — 500ml",
+      "priceGhs": 65,
+      "priceUsd": 5.65,
+      "image": "assets/glow-body-cream.jpeg"
+    }
+  }
+}

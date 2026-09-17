@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Checkout | Sheara</title>
+  <meta name="description" content="Complete your Sheara order.">
+  <link rel="icon" href="assets/sheara-logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="announcement">Powered by shea. Rooted in nature.</div>
+  <header class="site-header">
+    <a class="brand" href="index.html" aria-label="Sheara home"><img src="assets/sheara-logo.png" alt="Sheara"></a>
+    <button class="mobile-menu-toggle" id="mobileMenuToggle" aria-label="Open menu" aria-expanded="false"><span></span><span></span><span></span></button>
+    <nav class="desktop-nav">
+      <a href="index.html#shop">Shop</a><a href="index.html#story">Our Story</a><a href="index.html#ingredients">Why Sheara</a><a href="retailers.html">Retailers</a><a href="index.html#contact">Contact</a>
+    </nav>
+    <nav class="mobile-nav" id="mobileNav" aria-label="Mobile navigation"><a href="index.html#shop">Shop</a><a href="index.html#story">Our Story</a><a href="index.html#why">Why Sheara</a><a href="index.html#journal">Journal</a><a href="retailers.html">Partner With Us</a><a href="account.html">My Account</a><a href="index.html#contact">Contact</a></nav>
+    <a class="cart-button" href="index.html#shop">Continue shopping</a>
+  </header>
+
+  <main class="checkout-page">
+    <div class="checkout-page-head">
+      <p class="eyebrow">SHEARA CHECKOUT</p>
+      <h1>Almost yours.</h1>
+      <p>Review your order, tell us where to deliver it, and we'll guide you through the final payment step.</p>
+    </div>
+
+    <div class="checkout-layout">
+      <section class="checkout-form-panel">
+        <div class="checkout-section-head"><span>01</span><div><h2>Your details</h2><p>We'll use these details to contact you about your order.</p></div></div>
+        <form id="fullCheckoutForm">
+          <div class="form-grid">
+            <label>Full name<input name="name" autocomplete="name" required></label>
+            <label>Phone / WhatsApp<input name="phone" type="tel" autocomplete="tel" required></label>
+          </div>
+          <label>Email address<input name="email" type="email" autocomplete="email" required></label>
+          <label>Country<select name="country" id="country" autocomplete="country" required><option value="GH">Ghana</option><option value="US">United States</option><option value="GB">United Kingdom</option><option value="CA">Canada</option><option value="NG">Nigeria</option><option value="AU">Australia</option><option value="DE">Germany</option><option value="AE">United Arab Emirates</option><option value="OTHER">Other</option></select></label>
+
+          <div class="checkout-section-head section-gap"><span>02</span><div><h2>Delivery details</h2><p>We'll confirm the delivery charge based on your location. Your country also determines how prices are displayed.</p></div></div>
+          <div class="form-grid">
+            <label>City / town<input name="city" autocomplete="address-level2" required></label>
+            <label>Area / neighbourhood<input name="area" required></label>
+          </div>
+          <label>Delivery address<textarea name="address" rows="3" autocomplete="street-address" required placeholder="House number, street, landmark, etc."></textarea></label>
+          <label>Order note <span class="optional">(optional)</span><textarea name="note" rows="2" placeholder="Anything we should know? e.g. preferred delivery time"></textarea></label>
+
+          <div class="delivery-notice"><strong>Delivery partner</strong><span id="shippingStatus">Choose your country to see available delivery options.</span></div><div id="shippingOptions" class="shipping-options"></div>
+          <div id="checkoutMessage" class="checkout-message" hidden></div>
+          <button class="button button-dark full" type="submit">Continue to payment</button>
+          <p class="form-footnote" id="currencyNote">Your payment is processed securely by Paystack. Sheara never sees or stores your card or mobile-money PIN.</p>
+        </form>
+      </section>
+
+      <aside class="checkout-order-panel">
+        <div class="checkout-section-head"><span>03</span><div><h2>Your order</h2><p>Sheara body care</p></div></div>
+        <div id="checkoutItems" class="checkout-items"></div>
+        <div class="order-totals"><div><span>Subtotal</span><strong id="pageSubtotal">GHS 0.00</strong></div><div><span>Delivery</span><span>To be confirmed</span></div></div>
+        <div class="order-total"><span>Products total</span><strong id="pageTotal">GHS 0.00</strong></div>
+        <a class="back-to-bag" href="index.html#shop">← Continue shopping</a>
+      </aside>
+    </div>
+  </main>
+
+  <footer>
+    <div class="footer-brand"><img src="assets/sheara-logo.png" alt="Sheara"><p>Nourish. Soften. Glow.</p></div>
+    <div class="footer-links"><a href="index.html#shop">Shop</a><a href="index.html#story">Our Story</a><a href="retailers.html">Retailers</a><a href="index.html#contact">Contact</a></div>
+    <small>© <span id="year"></span> Sheara. All rights reserved.</small>
+  </footer>
+  <script src="pricing.js"></script><script src="app.js"></script>
+  <script src="checkout.js"></script>
+</body>
+</html>

@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Payment not completed | Sheara</title>
+  <link rel="icon" href="assets/sheara-logo.png"><link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="payment-result">
+    <div class="result-card">
+      <p class="eyebrow">SHEARA</p>
+      <div class="result-mark failed">!</div>
+      <h1>Payment wasn't completed.</h1>
+      <p>Your order has not been marked as paid. You can return to checkout and try again.</p>
+      <div class="result-reference"><span>Reference</span><strong id="reference">—</strong></div>
+      <a class="button button-dark" href="checkout.html">Return to checkout</a>
+    </div>
+  </main>
+  <script>
+    const params = new URLSearchParams(location.search);
+    document.getElementById('reference').textContent = params.get('reference') || '—';
+  </script>
+</body>
+</html>

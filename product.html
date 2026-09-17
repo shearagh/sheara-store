@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sheara Product | Nourish. Soften. Glow.</title>
+  <meta name="description" content="Shop Sheara shea-powered body care.">
+  <link rel="icon" href="assets/sheara-logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="product-page">
+  <div class="announcement">Powered by shea. Rooted in nature.</div>
+  <header class="site-header">
+    <a class="brand" href="index.html#top"><img src="assets/sheara-logo.png" alt="Sheara"></a>
+    <button class="mobile-menu-toggle" id="mobileMenuToggle" aria-label="Open menu" aria-expanded="false"><span></span><span></span><span></span></button>
+    <nav class="desktop-nav"><a href="index.html#shop">Shop</a><a href="about.html">Our Story</a><a href="index.html#why">Why Sheara</a><a href="journal.html">Journal</a><a href="retailers.html">Partner With Us</a><a href="account.html">My Account</a></nav>
+    <nav class="mobile-nav" id="mobileNav" aria-label="Mobile navigation"><a href="index.html#shop">Shop</a><a href="index.html#story">Our Story</a><a href="index.html#why">Why Sheara</a><a href="index.html#journal">Journal</a><a href="retailers.html">Partner With Us</a><a href="account.html">My Account</a><a href="index.html#contact">Contact</a></nav>
+    <button class="cart-button" id="openCart" aria-label="Open shopping bag">Bag <span id="cartCount">0</span></button>
+  </header>
+
+  <main>
+    <section class="product-detail" id="productDetail"></section>
+    <section class="product-note">
+      <p class="eyebrow">SHEARA CARE</p>
+      <h2>Made for your everyday ritual.</h2>
+      <p>Sheara is a Ghanaian body-care brand built around shea and thoughtful everyday formulations. Explore the rest of the collection when you're ready.</p>
+      <a class="button button-dark" href="index.html#shop">Continue shopping</a>
+    </section>
+  </main>
+
+  <footer><div class="footer-brand"><img src="assets/sheara-logo.png" alt="Sheara"><p>Nourish. Soften. Glow.</p></div><div class="footer-links"><a href="index.html#shop">Shop</a><a href="index.html#story">Our Story</a><a href="retailers.html">Retailers</a><a href="index.html#contact">Contact</a></div><small>© <span id="year"></span> Sheara. All rights reserved.</small></footer>
+
+  <div class="overlay" id="overlay"></div>
+  <aside class="cart-drawer" id="cartDrawer" aria-label="Shopping bag"><div class="cart-header"><h2>Your bag</h2><button id="closeCart" aria-label="Close bag">×</button></div><div id="cartItems" class="cart-items"><p class="empty">Your bag is empty.</p></div><div class="cart-footer"><div class="subtotal"><span>Subtotal</span><strong id="subtotal">GHS 0.00</strong></div><p class="checkout-note">Delivery is arranged separately for now. Your delivery fee will be confirmed based on your location.</p><button class="button button-dark full" id="checkoutButton">Continue to checkout</button></div></aside>
+  <div class="checkout-modal" id="checkoutModal"><div class="checkout-box"><button class="modal-close" id="closeCheckout">×</button><p class="eyebrow">CHECKOUT</p><h2>Complete your order.</h2><form id="checkoutForm"><label>Full name<input name="name" required></label><label>Email<input name="email" type="email" required></label><label>Phone / WhatsApp<input name="phone" required></label><label>Delivery address<textarea name="address" rows="3" required></textarea></label><div class="checkout-summary"><span>Products</span><strong id="checkoutTotal">GHS 0.00</strong></div><button class="button button-dark full" type="submit">Proceed to payment</button><p class="small-note">Online payment will be connected before launch. Delivery charges will be calculated once your delivery partner is selected.</p></form></div></div>
+  <script src="pricing.js"></script><script src="app.js"></script>
+  <script src="product.js"></script>
+</body>
+</html>

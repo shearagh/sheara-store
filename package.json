@@ -1,0 +1,21 @@
+{
+  "name": "sheara-store",
+  "version": "17.0.0",
+  "private": true,
+  "description": "Sheara scalable ecommerce and business control centre",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "seed": "node seed.js",
+    "migrate": "node migrate.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.2",
+    "express": "^5.1.0",
+    "express-rate-limit": "^8.1.0",
+    "pg": "^8.16.3"
+  }
+}

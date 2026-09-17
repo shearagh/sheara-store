@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Retailers & Stockists | Sheara Ghana</title>
+  <meta name="description" content="Apply to stock Sheara Ghana body-care products.">
+  <link rel="icon" href="assets/sheara-logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="announcement">Powered by shea. Rooted in nature.</div>
+  <header class="site-header"><a class="brand" href="index.html#top"><img src="assets/sheara-logo.png" alt="Sheara"></a><button class="mobile-menu-toggle" id="mobileMenuToggle" aria-label="Open menu" aria-expanded="false"><span></span><span></span><span></span></button>
+    <nav class="desktop-nav"><a href="index.html#shop">Shop</a><a href="index.html#story">Our Story</a><a href="index.html#ingredients">Why Sheara</a><a href="retailers.html">Retailers</a><a href="index.html#contact">Contact</a></nav><a class="cart-button nav-home" href="index.html#shop">Shop products</a></header>
+  <main>
+    <section class="retailer-hero"><div><p class="eyebrow">FOR RETAILERS & STOCKISTS</p><h1>Bring Sheara to your customers.</h1><p>We are building a growing network of shops, pharmacies, supermarkets, boutiques and salons that want to offer Ghanaian-made body care.</p></div><div class="retailer-hero-card"><span>WHOLESALE ENQUIRY</span><strong>Let's grow together.</strong><p>Tell us about your business and what you would like to stock. We'll follow up with retailer pricing, minimum order quantities and next steps.</p></div></section>
+    <section class="retailer-form-section"><div class="retailer-form-intro"><p class="eyebrow">STOCK SHEARA</p><h2>Tell us about your business.</h2><p>This enquiry is sent directly to Sheara on WhatsApp. You don't need to know your final order quantity yet.</p><div class="retailer-benefits"><div><b>01</b><span>Wholesale pricing</span></div><div><b>02</b><span>Product & size options</span></div><div><b>03</b><span>Support for new stockists</span></div></div></div>
+      <form class="retailer-form" id="retailerForm">
+        <label>Business name<input name="business" required></label>
+        <label>Contact person<input name="contact" required></label>
+        <label>Phone / WhatsApp<input name="phone" required></label>
+        <label>Business location<input name="location" placeholder="e.g. Accra, Ghana" required></label>
+        <label>Business type<select name="type" required><option value="">Select one</option><option>Beauty shop</option><option>Pharmacy</option><option>Supermarket</option><option>Boutique</option><option>Salon / spa</option><option>Online store</option><option>Other</option></select></label>
+        <label>Products interested in<select name="products" required><option value="">Select one</option><option>Sheara Lotion 50ml</option><option>Sheara Lotion 100ml</option><option>Glow Body Cream 500ml</option><option>Multiple products</option></select></label>
+        <label>Estimated quantity / message<textarea name="message" rows="4" placeholder="Tell us anything useful about your enquiry."></textarea></label>
+        <button class="button button-dark full" type="submit">Send wholesale enquiry on WhatsApp</button>
+        <p class="small-note">Prefer email? <a href="mailto:shearaghana@gmail.com?subject=Sheara%20Wholesale%20Enquiry">shearaghana@gmail.com</a></p>
+      </form>
+    </section>
+  </main>
+  <footer><div class="footer-brand"><img src="assets/sheara-logo.png" alt="Sheara"><p>Nourish. Soften. Glow.</p></div><div class="footer-links"><a href="index.html#shop">Shop</a><a href="index.html#story">Our Story</a><a href="retailers.html">Retailers</a><a href="index.html#contact">Contact</a></div><small>© <span id="year"></span> Sheara. All rights reserved.</small></footer>
+  <script src="app.js"></script>
+  <script>
+    document.getElementById('year').textContent = new Date().getFullYear();
+    document.getElementById('retailerForm').addEventListener('submit', function(e){
+      e.preventDefault();
+      const d = Object.fromEntries(new FormData(this).entries());
+      const text = `Hello Sheara, I would like to stock Sheara products.\n\nBusiness name: ${d.business}\nContact person: ${d.contact}\nPhone/WhatsApp: ${d.phone}\nLocation: ${d.location}\nBusiness type: ${d.type}\nProducts interested in: ${d.products}\nMessage/estimated quantity: ${d.message || 'Not specified'}`;
+      window.open(`https://wa.me/233559701063?text=${encodeURIComponent(text)}`, '_blank');
+    });
+  </script>
+</body>
+</html>
