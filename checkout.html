@@ -1,77 +1,14 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Checkout | Sheara</title>
-  <meta name="description" content="Complete your Sheara order.">
-  <link rel="icon" href="assets/sheara-logo.png">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css">
-</head>
-<body>
-  <div class="announcement">Powered by shea. Rooted in nature.</div>
-  <header class="site-header">
-    <a class="brand" href="index.html" aria-label="Sheara home"><img src="assets/sheara-logo.png" alt="Sheara"></a>
-    <button class="mobile-menu-toggle" id="mobileMenuToggle" aria-label="Open menu" aria-expanded="false"><span></span><span></span><span></span></button>
-    <nav class="desktop-nav">
-      <a href="index.html#shop">Shop</a><a href="index.html#story">Our Story</a><a href="index.html#ingredients">Why Sheara</a><a href="retailers.html">Retailers</a><a href="index.html#contact">Contact</a>
-    </nav>
-    <nav class="mobile-nav" id="mobileNav" aria-label="Mobile navigation"><a href="index.html#shop">Shop</a><a href="index.html#story">Our Story</a><a href="index.html#why">Why Sheara</a><a href="index.html#journal">Journal</a><a href="retailers.html">Partner With Us</a><a href="account.html">My Account</a><a href="index.html#contact">Contact</a></nav>
-    <a class="cart-button" href="index.html#shop">Continue shopping</a>
-  </header>
-
-  <main class="checkout-page">
-    <div class="checkout-page-head">
-      <p class="eyebrow">SHEARA CHECKOUT</p>
-      <h1>Almost yours.</h1>
-      <p>Review your order, tell us where to deliver it, and we'll guide you through the final payment step.</p>
-    </div>
-
-    <div class="checkout-layout">
-      <section class="checkout-form-panel">
-        <div class="checkout-section-head"><span>01</span><div><h2>Your details</h2><p>We'll use these details to contact you about your order.</p></div></div>
-        <form id="fullCheckoutForm">
-          <div class="form-grid">
-            <label>Full name<input name="name" autocomplete="name" required></label>
-            <label>Phone / WhatsApp<input name="phone" type="tel" autocomplete="tel" required></label>
-          </div>
-          <label>Email address<input name="email" type="email" autocomplete="email" required></label>
-          <label>Country<select name="country" id="country" autocomplete="country" required><option value="GH">Ghana</option><option value="US">United States</option><option value="GB">United Kingdom</option><option value="CA">Canada</option><option value="NG">Nigeria</option><option value="AU">Australia</option><option value="DE">Germany</option><option value="AE">United Arab Emirates</option><option value="OTHER">Other</option></select></label>
-
-          <div class="checkout-section-head section-gap"><span>02</span><div><h2>Delivery details</h2><p>We'll confirm the delivery charge based on your location. Your country also determines how prices are displayed.</p></div></div>
-          <div class="form-grid">
-            <label>City / town<input name="city" autocomplete="address-level2" required></label>
-            <label>Area / neighbourhood<input name="area" required></label>
-          </div>
-          <label>Delivery address<textarea name="address" rows="3" autocomplete="street-address" required placeholder="House number, street, landmark, etc."></textarea></label>
-          <label>Order note <span class="optional">(optional)</span><textarea name="note" rows="2" placeholder="Anything we should know? e.g. preferred delivery time"></textarea></label>
-
-          <div class="delivery-notice"><strong>Delivery partner</strong><span id="shippingStatus">Choose your country to see available delivery options.</span></div><div id="shippingOptions" class="shipping-options"></div>
-          <div id="checkoutMessage" class="checkout-message" hidden></div>
-          <button class="button button-dark full" type="submit">Continue to payment</button>
-          <p class="form-footnote" id="currencyNote">Your payment is processed securely by Paystack. Sheara never sees or stores your card or mobile-money PIN.</p>
-        </form>
-      </section>
-
-      <aside class="checkout-order-panel">
-        <div class="checkout-section-head"><span>03</span><div><h2>Your order</h2><p>Sheara body care</p></div></div>
-        <div id="checkoutItems" class="checkout-items"></div>
-        <div class="order-totals"><div><span>Subtotal</span><strong id="pageSubtotal">GHS 0.00</strong></div><div><span>Delivery</span><span>To be confirmed</span></div></div>
-        <div class="order-total"><span>Products total</span><strong id="pageTotal">GHS 0.00</strong></div>
-        <a class="back-to-bag" href="index.html#shop">← Continue shopping</a>
-      </aside>
-    </div>
-  </main>
-
-  <footer>
-    <div class="footer-brand"><img src="assets/sheara-logo.png" alt="Sheara"><p>Nourish. Soften. Glow.</p></div>
-    <div class="footer-links"><a href="index.html#shop">Shop</a><a href="index.html#story">Our Story</a><a href="retailers.html">Retailers</a><a href="index.html#contact">Contact</a></div>
-    <small>© <span id="year"></span> Sheara. All rights reserved.</small>
-  </footer>
-  <script src="pricing.js"></script><script src="app.js"></script>
-  <script src="checkout.js"></script>
-</body>
-</html>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Checkout | Sheara</title><link rel="stylesheet" href="./styles.css"></head><body>
+<div class="announce">Secure checkout &nbsp; • &nbsp; Payments processed by Paystack</div><header class="site-header"><div class="wrap nav"><a class="brand" href="./index.html"><img src="./assets/sheara-logo.png" alt="Sheara"></a><div class="navright"><a class="bag" href="./shop.html">← Continue shopping</a></div></div></header>
+<section class="page-hero"><div class="eyebrow">Checkout</div><h1>Complete your order.</h1><p class="intro">Enter your delivery details, then continue to secure payment.</p></section>
+<main class="page-body wrap"><div id="alert"></div><div class="contact-grid"><section class="contact-box"><h2>Delivery details</h2><form id="form"><p><label>Full name<br><input id="name" required style="width:100%;padding:13px;border:1px solid var(--line);margin-top:6px"></label></p><p><label>Phone / WhatsApp<br><input id="phone" required style="width:100%;padding:13px;border:1px solid var(--line);margin-top:6px"></label></p><p><label>Email<br><input id="email" type="email" required style="width:100%;padding:13px;border:1px solid var(--line);margin-top:6px"></label></p><p><label>City / Town<br><input id="city" required style="width:100%;padding:13px;border:1px solid var(--line);margin-top:6px"></label></p><p><label>Region<br><select id="region" required style="width:100%;padding:13px;border:1px solid var(--line);margin-top:6px"><option value="">Select region</option><option>Greater Accra</option><option>Upper East</option><option>Ashanti</option><option>Central</option><option>Eastern</option><option>Western</option><option>Western North</option><option>Volta</option><option>Oti</option><option>Northern</option><option>Savannah</option><option>North East</option><option>Upper West</option><option>Bono</option><option>Bono East</option><option>Ahafo</option></select></label></p><p><label>Delivery address<br><textarea id="address" required placeholder="House number, street, landmark, etc." style="width:100%;min-height:110px;padding:13px;border:1px solid var(--line);margin-top:6px"></textarea></label></p><p><strong style="font-size:12px">Delivery area</strong></p><p style="display:flex;gap:10px;flex-wrap:wrap"><label style="border:1px solid var(--line);padding:12px 15px"><input type="radio" name="zone" value="accra" required> Accra</label><label style="border:1px solid var(--line);padding:12px 15px"><input type="radio" name="zone" value="other_ghana"> Other Ghana</label></p><p class="muted">Your delivery information is saved with your order. Payment is completed securely through Paystack.</p><button class="pill" type="submit" style="border:0;cursor:pointer">Continue to secure payment →</button><p id="error" style="color:#a52a2a;font-size:12px"></p></form></section><aside class="contact-box"><h2>Your order</h2><div id="summary"></div></aside></div></main>
+<footer class="footer"><div class="wrap footer-grid"><div><div class="footer-logo">Sheara</div><p>Nourish. Soften. Glow.</p></div><div><h4>Support</h4><a href="./contact.html">Contact us</a><a href="https://wa.me/233556201073">WhatsApp</a></div><div><h4>Secure payment</h4><p>Card and supported Paystack payment methods.</p></div></div></footer>
+<script>
+let P={};const cart=JSON.parse(localStorage.getItem('sheara_cart')||'[]');const summary=document.getElementById('summary');
+async function start(){const r=await fetch('./api/products');const d=await r.json();P=Object.fromEntries((d.products||[]).map(p=>[p.id,p]));if(!cart.length){summary.innerHTML='<p class="muted">Your bag is empty. <a href="./shop.html">Shop Sheara</a></p>';document.querySelector('button[type=submit]').disabled=true;return}renderSummary();}
+function renderSummary(fee=null){const subtotal=cart.reduce((s,i)=>s+(P[i.id]?Number(P[i.id].price)*i.qty:0),0);summary.innerHTML=cart.map(i=>P[i.id]?`<div style="padding:12px 0;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:15px"><div><strong>${P[i.id].name}</strong><div class="muted">${P[i.id].size} × ${i.qty}</div></div><div>GHS ${(Number(P[i.id].price)*i.qty).toFixed(2)}</div></div>`:'').join('')+`<div style="display:flex;justify-content:space-between;margin-top:20px"><span>Subtotal</span><strong>GHS ${subtotal.toFixed(2)}</strong></div><div style="display:flex;justify-content:space-between;margin-top:12px"><span>Delivery</span><strong>${fee===null?'—':'GHS '+Number(fee).toFixed(2)}</strong></div>`+(fee!==null?`<div style="display:flex;justify-content:space-between;border-top:1px solid var(--line);margin-top:18px;padding-top:18px;font-size:18px"><strong>Total</strong><strong>GHS ${(subtotal+Number(fee)).toFixed(2)}</strong></div>`:'')}
+async function refreshFee(){const zone=document.querySelector('input[name=zone]:checked')?.value;if(!zone)return;const r=await fetch('./api/config');const d=await r.json();renderSummary(zone==='accra'?Number(d.delivery.delivery_accra):Number(d.delivery.delivery_other_ghana))}
+document.querySelectorAll('input[name=zone]').forEach(x=>x.addEventListener('change',refreshFee));
+document.getElementById('form').onsubmit=async e=>{e.preventDefault();document.getElementById('error').textContent='';const zone=document.querySelector('input[name=zone]:checked')?.value;if(!zone){document.getElementById('error').textContent='Please select your delivery area.';return}const customer={name:document.getElementById('name').value,phone:document.getElementById('phone').value,email:document.getElementById('email').value,city:document.getElementById('city').value,region:document.getElementById('region').value,address:document.getElementById('address').value,deliveryZone:zone};try{const r=await fetch('./api/orders/initialize',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({customer,items:cart})});const d=await r.json();if(!r.ok)throw new Error(d.error||'Unable to start payment.');window.location.href=d.authorization_url}catch(err){document.getElementById('error').textContent=err.message}};
+start();
+</script></body></html>

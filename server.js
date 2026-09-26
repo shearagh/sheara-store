@@ -1,129 +1,187 @@
-const express = require('express');
-const crypto = require('crypto');
-const path = require('path');
-const bcrypt = require('bcryptjs');
-const rateLimit = require('express-rate-limit');
-const db = require('./db');
+import 'dotenv/config';
+import express from 'express';
+import path from 'path';
+import crypto from 'crypto';
+import fs from 'fs/promises';
+import { fileURLToPath } from 'url';
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
+import pg from 'pg';
 
-const app = express();
+const { Pool } = pg;
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 const PORT = process.env.PORT || 3000;
-const SITE_URL = (process.env.SITE_URL || `http://localhost:${PORT}`).replace(/\/$/,'');
+const SITE_URL = (process.env.SITE_URL || `http://localhost:${PORT}`).replace(/\/$/, '');
+const JWT_SECRET = process.env.JWT_SECRET || 'dev-only-change-me';
 const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY || '';
+const ADMIN_PASSWORD_HASH = process.env.ADMIN_PASSWORD_HASH || '';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';
-const ADMIN_SESSION_SECRET = process.env.ADMIN_SESSION_SECRET || crypto.randomBytes(32).toString('hex');
+const DATA_DIR = path.join(__dirname, 'data');
+const DATA_FILE = path.join(DATA_DIR, 'orders.json');
+const PRODUCTS_FILE = path.join(DATA_DIR, 'products.json');
+const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
 
-app.set('trust proxy', 1);
-app.disable('x-powered-by');
-app.use((req,res,next)=>{res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','strict-origin-when-cross-origin');res.setHeader('X-Frame-Options','SAMEORIGIN');next();});
-app.use(express.json({limit:'100kb',verify:(req,res,buf)=>{req.rawBody=Buffer.from(buf)}}));
-app.use(express.urlencoded({extended:true,limit:'30kb'}));
+const DEFAULT_PRODUCTS = [
+  { id:'glow', name:'Glow Body Cream', size:'500ml', price:65, img:'/assets/glow-body-cream.jpeg', desc:'Rich body cream for deep nourishment, softness and a healthy-looking glow.', active:true },
+  { id:'lotion50', name:'Sheara Lotion', size:'50ml', price:15, img:'/assets/lotion-50ml.jpeg', desc:'Lightweight moisture for soft, radiant-looking skin, enriched with niacinamide, sunflower oil and vitamin E.', active:true },
+  { id:'lotion100', name:'Sheara Lotion', size:'100ml', price:25, img:'/assets/lotion-100ml.jpeg', desc:'Our everyday lotion in a larger size, enriched with niacinamide, sunflower oil and vitamin E.', active:true }
+];
+const DEFAULT_SETTINGS = { delivery_accra: 0, delivery_other_ghana: 0 };
 
-const authLimiter = rateLimit({windowMs:15*60*1000,max:30,standardHeaders:true,legacyHeaders:false,message:{error:'Too many attempts. Please try again later.'}});
-const checkoutLimiter = rateLimit({windowMs:60*1000,max:30,standardHeaders:true,legacyHeaders:false,message:{error:'Too many checkout attempts. Please wait a moment.'}});
+const pool = process.env.DATABASE_URL ? new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } }) : null;
+let jsonWrite = Promise.resolve();
 
-const FALLBACK = db.DEFAULT;
-function countryFrom(req, customer={}) { return String(customer.country || req.body?.country || req.query?.country || req.headers['x-country-code'] || req.headers['cf-ipcountry'] || req.headers['x-vercel-ip-country'] || '').trim().toUpperCase() || 'GH'; }
-function isGhana(code){return code==='GH';}
-function reference(){return `SHEARA-${Date.now()}-${crypto.randomBytes(6).toString('hex')}`;}
-function tokenHash(token){return crypto.createHash('sha256').update(token).digest('hex');}
-function adminToken(){const payload=`sheara-admin:${Date.now()}`;const sig=crypto.createHmac('sha256',ADMIN_SESSION_SECRET).update(payload).digest('hex');return Buffer.from(`${payload}:${sig}`).toString('base64url');}
-function validAdminToken(token){try{const raw=Buffer.from(token||'','base64url').toString();const parts=raw.split(':');const sig=parts.pop();const payload=parts.join(':');const expected=crypto.createHmac('sha256',ADMIN_SESSION_SECRET).update(payload).digest('hex');return crypto.timingSafeEqual(Buffer.from(sig),Buffer.from(expected)) && Date.now()-Number(payload.split(':').pop())<8*60*60*1000;}catch{return false;}}
-function requireAdmin(req,res,next){if(!ADMIN_PASSWORD)return res.status(503).json({error:'Admin access is not configured.'});if(!validAdminToken((req.headers.authorization||'').replace(/^Bearer\s+/i,'')))return res.status(401).json({error:'Admin authentication required.'});next();}
-function verifyPaystackSignature(req){const sig=req.headers['x-paystack-signature'];if(!sig||!PAYSTACK_SECRET_KEY||!req.rawBody)return false;const hash=crypto.createHmac('sha512',PAYSTACK_SECRET_KEY).update(req.rawBody).digest('hex');try{return crypto.timingSafeEqual(Buffer.from(hash),Buffer.from(sig));}catch{return false;}}
-function cleanProduct(p){return {id:p.id,name:p.name,size:p.size,category:p.category,description:p.description,highlights:p.highlights,keyIngredients:p.keyIngredients||p.key_ingredients||[],ingredients:p.ingredients,howToUse:p.howToUse||p.how_to_use,image:p.image||p.image_url,priceGhs:Number(p.priceGhs??p.price_ghs),priceUsd:Number(p.priceUsd??p.price_usd),costGhs:Number(p.costGhs??p.cost_ghs??0),stock:Number(p.stock),active:p.active!==false,featured:Boolean(p.featured)}};
-
-async function getProducts(){
-  if(db.hasDatabase){const r=await db.query('SELECT * FROM products ORDER BY featured DESC, created_at ASC');return r.rows.map(cleanProduct);}
-  return Object.entries(db.readJson().products).map(([id,p])=>cleanProduct({id,...p,active:true,featured:false,stock:p.stock??100}));
-}
-async function getRate(){if(db.hasDatabase){const r=await db.query("SELECT value->>'usdToGhsRate' AS rate FROM site_settings WHERE key='currency'");return Number(r.rows[0]?.rate||11.5);}return Number(db.readJson().currency.usdToGhsRate||11.5);}
-async function getProduct(id){const products=await getProducts();return products.find(p=>p.id===id&&p.active)!==undefined?products.find(p=>p.id===id&&p.active):null;}
-
-app.get('/api/health',async(req,res)=>{try{const database=db.hasDatabase?await db.ping():false;res.json({ok:true,database:database?'postgres':'development-fallback',paystackConfigured:Boolean(PAYSTACK_SECRET_KEY),version:'17.0.0'});}catch(e){res.status(503).json({ok:false,database:'unhealthy',error:'Database unavailable'});}});
-
-app.get('/api/storefront',async(req,res)=>{try{const country=countryFrom(req);const currency=isGhana(country)?'GHS':'USD';const rate=await getRate();const products=(await getProducts()).filter(p=>p.active).map(p=>({...p,price:Number(currency==='GHS'?p.priceGhs:p.priceUsd)}));res.setHeader('Cache-Control','public, max-age=30, stale-while-revalidate=120');res.json({currency,country,usdToGhsRate:rate,products});}catch(e){console.error(e);res.status(503).json({error:'Storefront temporarily unavailable.'});}});
-
-// Customer accounts: passwords are hashed and sessions are stored server-side.
-app.post('/api/auth/register',authLimiter,async(req,res)=>{try{const name=String(req.body?.name||'').trim(),email=String(req.body?.email||'').trim().toLowerCase(),password=String(req.body?.password||''),country=String(req.body?.country||'GH').toUpperCase();if(!name||!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)||password.length<10)return res.status(400).json({error:'Enter a name, valid email and password of at least 10 characters.'});if(!db.hasDatabase)return res.status(503).json({error:'Customer accounts require the production PostgreSQL database.'});const hash=await bcrypt.hash(password,12);const r=await db.query('INSERT INTO customers(name,email,password_hash,country_code) VALUES($1,$2,$3,$4) RETURNING id,name,email,country_code',[name,email,hash,country]);return res.status(201).json({customer:r.rows[0]});}catch(e){if(e.code==='23505')return res.status(409).json({error:'An account with that email already exists.'});console.error(e);res.status(500).json({error:'Could not create account.'});}});
-app.get('/api/auth/me',async(req,res)=>{try{if(!db.hasDatabase)return res.status(503).json({error:'Customer accounts require the production PostgreSQL database.'});const raw=String(req.headers.authorization||'').replace(/^Bearer\s+/i,'');if(!raw)return res.status(401).json({error:'Not signed in.'});const r=await db.query("SELECT c.id,c.name,c.email,c.country_code FROM sessions s JOIN customers c ON c.id=s.customer_id WHERE s.token_hash=$1 AND s.expires_at>NOW()",[tokenHash(raw)]);if(!r.rows[0])return res.status(401).json({error:'Session expired.'});res.json({customer:{id:r.rows[0].id,name:r.rows[0].name,email:r.rows[0].email,country:r.rows[0].country_code}});}catch(e){console.error(e);res.status(500).json({error:'Could not load account.'});}});
-app.post('/api/auth/logout',async(req,res)=>{try{if(db.hasDatabase){const raw=String(req.headers.authorization||'').replace(/^Bearer\s+/i,'');if(raw)await db.query('DELETE FROM sessions WHERE token_hash=$1',[tokenHash(raw)]);}res.json({ok:true});}catch(e){res.json({ok:true});}});
-app.post('/api/auth/login',authLimiter,async(req,res)=>{try{const email=String(req.body?.email||'').trim().toLowerCase(),password=String(req.body?.password||'');if(!db.hasDatabase)return res.status(503).json({error:'Customer accounts require the production PostgreSQL database.'});const r=await db.query('SELECT * FROM customers WHERE email=$1',[email]);const customer=r.rows[0];if(!customer||!(await bcrypt.compare(password,customer.password_hash)))return res.status(401).json({error:'Email or password is incorrect.'});const raw=crypto.randomBytes(32).toString('hex');await db.query("INSERT INTO sessions(customer_id,token_hash,expires_at) VALUES($1,$2,NOW()+INTERVAL '30 days')",[customer.id,tokenHash(raw)]);res.cookie?.('sheara_session',raw);res.json({token:raw,customer:{id:customer.id,name:customer.name,email:customer.email,country:customer.country_code}});}catch(e){console.error(e);res.status(500).json({error:'Could not sign in.'});}});
-
-// Business dashboard helpers
-async function getAdminSummary(){
-  if(!db.hasDatabase) return {demo:true,metrics:{orders:0,customers:0,unitsSold:0,grossRevenueGhs:0,cogsGhs:0,grossProfitGhs:0,refundsGhs:0,expensesGhs:0,netSalesGhs:0,operatingProfitGhs:0},products:[],recentOrders:[],expenses:[]};
-  const [m,p,o,e]=await Promise.all([
-    db.query(`SELECT
-      (SELECT COUNT(*) FROM orders WHERE payment_status='paid')::int AS orders,
-      (SELECT COUNT(*) FROM customers)::int AS customers,
-      COALESCE((SELECT SUM(oi.quantity) FROM order_items oi JOIN orders oo ON oo.id=oi.order_id WHERE oo.payment_status='paid'),0)::int AS units_sold,
-      COALESCE((SELECT SUM(amount_ghs) FROM orders WHERE payment_status='paid'),0) AS gross_revenue,
-      COALESCE((SELECT SUM(amount_ghs) FROM refunds WHERE status='recorded'),0) AS refunds,
-      COALESCE((SELECT SUM(oi.unit_cost_ghs*oi.quantity) FROM order_items oi JOIN orders oo ON oo.id=oi.order_id WHERE oo.payment_status='paid'),0) AS cogs,
-      COALESCE((SELECT SUM(amount_ghs) FROM expenses),0) AS expenses`),
-    db.query(`SELECT p.id,p.name,p.size,p.stock,COALESCE(SUM(CASE WHEN o.payment_status='paid' THEN oi.quantity ELSE 0 END),0)::int AS units_sold FROM products p LEFT JOIN order_items oi ON oi.product_id=p.id LEFT JOIN orders o ON o.id=oi.order_id GROUP BY p.id ORDER BY p.stock ASC,p.name ASC`),
-    db.query(`SELECT reference,customer_name,customer_email,country_code,display_currency,subtotal_display,amount_ghs,payment_status,order_status,created_at FROM orders ORDER BY created_at DESC LIMIT 12`),
-    db.query(`SELECT id,category,description,amount_ghs,expense_date,notes FROM expenses ORDER BY expense_date DESC,created_at DESC LIMIT 20`)
-  ]);
-  const x=m.rows[0]; const gross=Number(x.gross_revenue), cogs=Number(x.cogs), refunds=Number(x.refunds), expenses=Number(x.expenses);
-  return {metrics:{orders:Number(x.orders),customers:Number(x.customers),unitsSold:Number(x.units_sold),grossRevenueGhs:gross,cogsGhs:cogs,grossProfitGhs:gross-cogs,refundsGhs:refunds,expensesGhs:expenses,netSalesGhs:gross-refunds,operatingProfitGhs:gross-cogs-refunds-expenses},products:p.rows.map(r=>({...r,stock:Number(r.stock),unitsSold:Number(r.units_sold)})),recentOrders:o.rows.map(r=>({...r,subtotalDisplay:Number(r.subtotal_display),amountGhs:Number(r.amount_ghs)})),expenses:e.rows.map(r=>({...r,amountGhs:Number(r.amount_ghs)}))};
+async function ensureJsonFile(file, fallback) {
+  await fs.mkdir(DATA_DIR, { recursive:true });
+  try { await fs.access(file); } catch { await fs.writeFile(file, JSON.stringify(fallback, null, 2)); }
 }
 
-// Admin
-app.post('/api/admin/login',authLimiter,(req,res)=>{if(!ADMIN_PASSWORD)return res.status(503).json({error:'Set ADMIN_PASSWORD on the server first.'});const password=String(req.body?.password||'');if(password!==ADMIN_PASSWORD)return res.status(401).json({error:'Incorrect password.'});res.json({token:adminToken()});});
-app.get('/api/admin/dashboard',requireAdmin,async(req,res)=>{try{res.json(await getAdminSummary());}catch(e){console.error(e);res.status(500).json({error:'Could not load dashboard.'});}});
-const DEFAULT_SITE_SETTINGS={
-  content:{announcement:'Powered by shea. Rooted in nature.',heroEyebrow:'SHEARA · POWERED BY SHEA',heroTitle:'Nourish. Soften. Glow.',heroText:'Nourishing body care made with shea and carefully selected ingredients for soft, moisturised, radiant-looking skin.',heroCta:'Shop Sheara',heroImage:'assets/shea-butter-luxury.png',contactEmail:'shearaghana@gmail.com',contactPhone:'+233559701063',instagram:'https://instagram.com/sheara_glow',tiktok:'https://tiktok.com/@shearagh'},
-  shipping:{ghana:{enabled:true,feeGhs:0,label:'Ghana'},international:{enabled:false,feeGhs:0,label:'International'},countries:['GH'],freeShippingThresholdGhs:0,customsNotice:'International orders may be subject to customs duties, taxes or import requirements in the destination country.',providers:[{id:'dhl',name:'DHL',enabled:false,trackingUrl:'https://www.dhl.com/',notes:'Enable only after confirming your Sheara route and cosmetics acceptance.'},{id:'fedex',name:'FedEx',enabled:false,trackingUrl:'https://www.fedex.com/',notes:'Enable only after confirming your Sheara route and cosmetics acceptance.'},{id:'ups',name:'UPS',enabled:false,trackingUrl:'https://www.ups.com/',notes:'Enable only after confirming your Sheara route and cosmetics acceptance.'},{id:'ghana-post',name:'Ghana Post',enabled:false,trackingUrl:'https://www.ghanapost.com.gh/',notes:''},{id:'local-courier',name:'Local Courier',enabled:false,trackingUrl:'',notes:''}],defaultProviderByZone:{ghana:'local-courier',international:'dhl'}},
-  store:{lowStockThreshold:10,currencyMode:'country'}
-};
-async function getSiteSetting(key, fallback){
-  if(!db.hasDatabase) return fallback;
-  const r=await db.query('SELECT value FROM site_settings WHERE key=$1',[key]);
-  return r.rows[0]?.value ?? fallback;
+async function ensureDb() {
+  if (pool) {
+    await pool.query(`CREATE TABLE IF NOT EXISTS orders (
+      id BIGSERIAL PRIMARY KEY,
+      order_number TEXT UNIQUE NOT NULL,
+      customer_name TEXT NOT NULL,
+      phone TEXT NOT NULL,
+      email TEXT NOT NULL,
+      address TEXT NOT NULL,
+      city TEXT,
+      region TEXT,
+      delivery_zone TEXT NOT NULL,
+      items JSONB NOT NULL,
+      subtotal NUMERIC(12,2) NOT NULL,
+      delivery_fee NUMERIC(12,2) NOT NULL,
+      total NUMERIC(12,2) NOT NULL,
+      payment_status TEXT NOT NULL DEFAULT 'pending',
+      order_status TEXT NOT NULL DEFAULT 'new',
+      paystack_reference TEXT,
+      paystack_transaction_id TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`);
+    await pool.query(`CREATE TABLE IF NOT EXISTS products (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      size TEXT NOT NULL,
+      price NUMERIC(12,2) NOT NULL,
+      img TEXT,
+      image_data TEXT,
+      description TEXT NOT NULL DEFAULT '',
+      active BOOLEAN NOT NULL DEFAULT TRUE,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`);
+    await pool.query(`CREATE TABLE IF NOT EXISTS site_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)`);
+    const count = Number((await pool.query('SELECT COUNT(*)::int AS count FROM products')).rows[0].count);
+    if (!count) for (const p of DEFAULT_PRODUCTS) await pool.query('INSERT INTO products (id,name,size,price,img,description,active) VALUES ($1,$2,$3,$4,$5,$6,$7)', [p.id,p.name,p.size,p.price,p.img,p.desc,p.active]);
+    const settings = await pool.query('SELECT key FROM site_settings');
+    if (!settings.rows.length) for (const [k,v] of Object.entries(DEFAULT_SETTINGS)) await pool.query('INSERT INTO site_settings (key,value) VALUES ($1,$2)', [k,String(v)]);
+    return;
+  }
+  await ensureJsonFile(DATA_FILE, []);
+  await ensureJsonFile(PRODUCTS_FILE, DEFAULT_PRODUCTS);
+  await ensureJsonFile(SETTINGS_FILE, DEFAULT_SETTINGS);
 }
-async function setSiteSetting(key,value){
-  if(!db.hasDatabase) throw new Error('Production PostgreSQL is required for store settings.');
-  await db.query("INSERT INTO site_settings(key,value) VALUES($1,$2::jsonb) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=NOW()",[key,JSON.stringify(value)]);
+
+async function readOrders() {
+  if (pool) return (await pool.query('SELECT * FROM orders ORDER BY created_at DESC')).rows;
+  return JSON.parse(await fs.readFile(DATA_FILE, 'utf8'));
 }
-app.get('/api/site-config',async(req,res)=>{try{const [content,shipping,store]=await Promise.all([getSiteSetting('content',DEFAULT_SITE_SETTINGS.content),getSiteSetting('shipping',DEFAULT_SITE_SETTINGS.shipping),getSiteSetting('store',DEFAULT_SITE_SETTINGS.store)]);res.setHeader('Cache-Control','public, max-age=30, stale-while-revalidate=120');res.json({content,shipping,store});}catch(e){console.error(e);res.status(503).json({error:'Store configuration temporarily unavailable.'});}});
-app.get('/api/admin/settings',requireAdmin,async(req,res)=>{try{const [content,shipping,store]=await Promise.all([getSiteSetting('content',DEFAULT_SITE_SETTINGS.content),getSiteSetting('shipping',DEFAULT_SITE_SETTINGS.shipping),getSiteSetting('store',DEFAULT_SITE_SETTINGS.store)]);res.json({content,shipping,store});}catch(e){console.error(e);res.status(500).json({error:'Could not load settings.'});}});
-app.put('/api/admin/settings/content',requireAdmin,async(req,res)=>{try{const value={...DEFAULT_SITE_SETTINGS.content,...(req.body||{})};await setSiteSetting('content',value);await db.query('INSERT INTO audit_logs(actor,action,entity_type,details) VALUES($1,$2,$3,$4)',['admin','update','site_content',JSON.stringify(value)]);res.json(value);}catch(e){console.error(e);res.status(500).json({error:'Could not save website content.'});}});
-app.put('/api/admin/settings/shipping',requireAdmin,async(req,res)=>{try{const b=req.body||{},fallback=DEFAULT_SITE_SETTINGS.shipping;const providers=Array.isArray(b.providers)?b.providers.map(x=>({id:String(x.id||'').trim().toLowerCase().replace(/[^a-z0-9-]/g,'-'),name:String(x.name||'').trim(),enabled:Boolean(x.enabled),trackingUrl:String(x.trackingUrl||'').trim(),notes:String(x.notes||'').trim()})).filter(x=>x.id&&x.name):fallback.providers;const value={ghana:{enabled:Boolean(b.ghana?.enabled),feeGhs:Math.max(0,Number(b.ghana?.feeGhs||0)),label:String(b.ghana?.label||'Ghana')},international:{enabled:Boolean(b.international?.enabled),feeGhs:Math.max(0,Number(b.international?.feeGhs||0)),label:String(b.international?.label||'International')},countries:Array.isArray(b.countries)?[...new Set(b.countries.map(x=>String(x).trim().toUpperCase()).filter(x=>/^[A-Z]{2}$/.test(x)))]:['GH'],freeShippingThresholdGhs:Math.max(0,Number(b.freeShippingThresholdGhs||0)),customsNotice:String(b.customsNotice||fallback.customsNotice),providers,defaultProviderByZone:{ghana:String(b.defaultProviderByZone?.ghana||'local-courier'),international:String(b.defaultProviderByZone?.international||'dhl')}};await setSiteSetting('shipping',value);await db.query('INSERT INTO audit_logs(actor,action,entity_type,details) VALUES($1,$2,$3,$4)',['admin','update','shipping_settings',JSON.stringify(value)]);res.json(value);}catch(e){console.error(e);res.status(500).json({error:'Could not save shipping settings.'});}});
-app.get('/api/shipping-options',async(req,res)=>{try{const country=String(req.query.country||'GH').toUpperCase();const sh=await getSiteSetting('shipping',DEFAULT_SITE_SETTINGS.shipping);const zone=country==='GH'?'ghana':'international';if(!sh[zone]?.enabled||zone==='international'&&!((sh.countries||[]).includes(country)))return res.json({enabled:false,options:[]});const providers=(sh.providers||[]).filter(x=>x.enabled);const baseFee=Number(sh[zone]?.feeGhs||0);res.json({enabled:true,zone,customsNotice:zone==='international'?sh.customsNotice:'',options:providers.map(p=>({id:p.id,name:p.name,feeGhs:baseFee,trackingUrl:p.trackingUrl||'',notes:p.notes||'',default:p.id===(sh.defaultProviderByZone||{})[zone]}))});}catch(e){console.error(e);res.status(503).json({error:'Shipping options temporarily unavailable.'});}});
-app.put('/api/admin/settings/store',requireAdmin,async(req,res)=>{try{const b=req.body||{},value={lowStockThreshold:Math.max(0,Math.floor(Number(b.lowStockThreshold??10))),currencyMode:'country'};await setSiteSetting('store',value);await db.query('INSERT INTO audit_logs(actor,action,entity_type,details) VALUES($1,$2,$3,$4)',['admin','update','store_settings',JSON.stringify(value)]);res.json(value);}catch(e){console.error(e);res.status(500).json({error:'Could not save store settings.'});}});
-app.get('/api/admin/customers',requireAdmin,async(req,res)=>{try{if(!db.hasDatabase)return res.json({customers:[]});const r=await db.query(`SELECT c.id,c.name,c.email,c.phone,c.country_code,c.created_at,COUNT(o.id)::int AS orders,COALESCE(SUM(CASE WHEN o.payment_status='paid' THEN o.amount_ghs ELSE 0 END),0) AS total_spent_ghs,MAX(o.created_at) AS last_order_at FROM customers c LEFT JOIN orders o ON o.customer_id=c.id OR (o.customer_id IS NULL AND lower(o.customer_email)=lower(c.email)) GROUP BY c.id ORDER BY c.created_at DESC LIMIT 500`);res.json({customers:r.rows.map(x=>({...x,totalSpentGhs:Number(x.total_spent_ghs)}))});}catch(e){console.error(e);res.status(500).json({error:'Could not load customers.'});}});
-app.get('/api/admin/inventory-movements',requireAdmin,async(req,res)=>{try{if(!db.hasDatabase)return res.json({movements:[]});const r=await db.query(`SELECT im.*,p.name,p.size FROM inventory_movements im JOIN products p ON p.id=im.product_id ORDER BY im.created_at DESC LIMIT 300`);res.json({movements:r.rows});}catch(e){console.error(e);res.status(500).json({error:'Could not load inventory history.'});}});
+async function getOrderByNumber(orderNumber) {
+  if (pool) return (await pool.query('SELECT * FROM orders WHERE order_number=$1', [orderNumber])).rows[0] || null;
+  const orders = JSON.parse(await fs.readFile(DATA_FILE, 'utf8')); return orders.find(o => o.order_number === orderNumber) || null;
+}
+async function getOrderByReference(reference) {
+  if (pool) return (await pool.query('SELECT * FROM orders WHERE paystack_reference=$1', [reference])).rows[0] || null;
+  const orders = JSON.parse(await fs.readFile(DATA_FILE, 'utf8')); return orders.find(o => o.paystack_reference === reference) || null;
+}
+async function createOrder(order) {
+  if (pool) {
+    const q = `INSERT INTO orders (order_number,customer_name,phone,email,address,city,region,delivery_zone,items,subtotal,delivery_fee,total,payment_status,order_status,paystack_reference) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`;
+    const values=[order.order_number,order.customer_name,order.phone,order.email,order.address,order.city,order.region,order.delivery_zone,JSON.stringify(order.items),order.subtotal,order.delivery_fee,order.total,order.payment_status,order.order_status,order.paystack_reference];
+    return (await pool.query(q,values)).rows[0];
+  }
+  jsonWrite=jsonWrite.then(async()=>{const orders=JSON.parse(await fs.readFile(DATA_FILE,'utf8'));orders.unshift(order);await fs.writeFile(DATA_FILE,JSON.stringify(orders,null,2));}); await jsonWrite; return order;
+}
+async function updateOrder(orderNumber, patch) {
+  if (pool) { const keys=Object.keys(patch); if(!keys.length)return getOrderByNumber(orderNumber); const sets=keys.map((k,i)=>`${k}=$${i+1}`).join(', '); const vals=keys.map(k=>patch[k]); vals.push(orderNumber); return (await pool.query(`UPDATE orders SET ${sets}, updated_at=NOW() WHERE order_number=$${vals.length} RETURNING *`,vals)).rows[0]||null; }
+  let updated; jsonWrite=jsonWrite.then(async()=>{const orders=JSON.parse(await fs.readFile(DATA_FILE,'utf8'));const idx=orders.findIndex(o=>o.order_number===orderNumber);if(idx<0)return;orders[idx]={...orders[idx],...patch,updated_at:new Date().toISOString()};updated=orders[idx];await fs.writeFile(DATA_FILE,JSON.stringify(orders,null,2));});await jsonWrite;return updated;
+}
+async function readProducts() {
+  if (pool) return (await pool.query('SELECT id,name,size,price,img,image_data,description,active,updated_at FROM products ORDER BY updated_at DESC')).rows;
+  return JSON.parse(await fs.readFile(PRODUCTS_FILE,'utf8'));
+}
+async function getProduct(id) { const ps=await readProducts(); return ps.find(p=>p.id===id) || null; }
+async function writeProducts(list) { jsonWrite=jsonWrite.then(()=>fs.writeFile(PRODUCTS_FILE,JSON.stringify(list,null,2))); await jsonWrite; }
+async function upsertProduct(p, existingId=null) {
+  if (pool) {
+    const id=existingId||p.id;
+    const q=existingId
+      ? `UPDATE products SET name=$1,size=$2,price=$3,img=$4,image_data=$5,description=$6,active=$7,updated_at=NOW() WHERE id=$8 RETURNING *`
+      : `INSERT INTO products (id,name,size,price,img,image_data,description,active) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`;
+    const vals=existingId?[p.name,p.size,p.price,p.img||null,p.image_data||null,p.description||'',p.active!==false,id]:[id,p.name,p.size,p.price,p.img||null,p.image_data||null,p.description||'',p.active!==false];
+    return (await pool.query(q,vals)).rows[0];
+  }
+  const list=JSON.parse(await fs.readFile(PRODUCTS_FILE,'utf8')); const idx=list.findIndex(x=>x.id===(existingId||p.id)); const out={...p,id:existingId||p.id,active:p.active!==false}; if(idx>=0)list[idx]=out;else list.unshift(out); await writeProducts(list); return out;
+}
+async function deleteProduct(id) {
+  if(pool){await pool.query('DELETE FROM products WHERE id=$1',[id]);return;}
+  const list=JSON.parse(await fs.readFile(PRODUCTS_FILE,'utf8')).filter(p=>p.id!==id); await writeProducts(list);
+}
+async function readSettings() {
+  if(pool){const rows=(await pool.query('SELECT key,value FROM site_settings')).rows;return Object.fromEntries(rows.map(r=>[r.key,Number(r.value)]));}
+  return JSON.parse(await fs.readFile(SETTINGS_FILE,'utf8'));
+}
+async function writeSettings(s) {
+  if(pool){for(const [k,v] of Object.entries(s)) await pool.query('INSERT INTO site_settings(key,value) VALUES($1,$2) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value',[k,String(v)]);return;}
+  await fs.writeFile(SETTINGS_FILE,JSON.stringify(s,null,2));
+}
+function makeOrderNumber(){return `SH-${new Date().toISOString().slice(0,10).replaceAll('-','')}-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;}
+function deliveryFee(zone){const s=globalThis.__settings||DEFAULT_SETTINGS;const value=zone==='accra'?s.delivery_accra:s.delivery_other_ghana;const fee=Number(value);return Number.isFinite(fee)&&fee>=0?fee:null;}
+function normalizeItems(raw){if(!Array.isArray(raw)||!raw.length)throw new Error('Your cart is empty.');const products=globalThis.__products||[];return raw.map(row=>{const p=products.find(x=>x.id===row.id&&x.active!==false);const qty=Math.max(1,Math.min(20,Number(row.qty||1)));if(!p)throw new Error('One of the products in your cart is no longer available.');return{id:p.id,name:p.name,size:p.size,price:Number(p.price),qty,img:p.image_data||p.img||''};});}
+function adminAuth(req,res,next){const token=req.cookies?.sheara_admin;if(!token)return res.status(401).json({error:'Not signed in.'});try{req.admin=jwt.verify(token,JWT_SECRET);next();}catch{return res.status(401).json({error:'Session expired.'});}}
+function cleanProductInput(body){const name=String(body?.name||'').trim(),size=String(body?.size||'').trim(),description=String(body?.description||'').trim();const price=Number(body?.price);if(!name||!size||!Number.isFinite(price)||price<0)throw new Error('Enter a product name, size and valid price.');return{name,size,price,img:String(body?.img||'').trim()||null,image_data:String(body?.image_data||'').trim()||null,description,active:body?.active!==false};}
 
-app.put('/api/admin/orders/:reference/status',requireAdmin,async(req,res)=>{try{if(!db.hasDatabase)return res.status(503).json({error:'Database required.'});const allowed=['pending_payment','processing','packed','shipped','delivered','cancelled','refunded','paid_stock_unavailable'];const status=String(req.body?.status||'').trim();if(!allowed.includes(status))return res.status(400).json({error:'Invalid order status.'});const r=await db.query('UPDATE orders SET order_status=$1,updated_at=NOW() WHERE reference=$2 RETURNING reference,order_status',[status,req.params.reference]);if(!r.rows[0])return res.status(404).json({error:'Order not found.'});await db.query('INSERT INTO audit_logs(actor,action,entity_type,entity_id,details) VALUES($1,$2,$3,$4,$5)',['admin','status_change','order',req.params.reference,JSON.stringify({status})]);res.json(r.rows[0]);}catch(e){console.error(e);res.status(500).json({error:'Could not update order status.'});}});
-app.put('/api/admin/orders/:reference/tracking',requireAdmin,async(req,res)=>{try{if(!db.hasDatabase)return res.status(503).json({error:'Database required.'});const tracking=String(req.body?.trackingNumber||'').trim();const r=await db.query('UPDATE orders SET tracking_number=$1,updated_at=NOW() WHERE reference=$2 RETURNING reference,tracking_number',[tracking||null,req.params.reference]);if(!r.rows[0])return res.status(404).json({error:'Order not found.'});await db.query('INSERT INTO audit_logs(actor,action,entity_type,entity_id,details) VALUES($1,$2,$3,$4,$5)',['admin','tracking_update','order',req.params.reference,JSON.stringify({trackingNumber:tracking||null})]);res.json(r.rows[0]);}catch(e){console.error(e);res.status(500).json({error:'Could not update tracking.'});}});
-app.get('/api/admin/orders',requireAdmin,async(req,res)=>{try{if(!db.hasDatabase)return res.json({orders:[]});const r=await db.query(`SELECT o.*,COALESCE(json_agg(json_build_object('productId',oi.product_id,'name',oi.product_name,'size',oi.size,'quantity',oi.quantity,'unitPriceGhs',oi.unit_price_ghs,'unitPriceDisplay',oi.unit_price_display)) FILTER (WHERE oi.id IS NOT NULL),'[]') AS items FROM orders o LEFT JOIN order_items oi ON oi.order_id=o.id GROUP BY o.id ORDER BY o.created_at DESC LIMIT 200`);res.json({orders:r.rows});}catch(e){console.error(e);res.status(500).json({error:'Could not load orders.'});}});
-app.post('/api/admin/expenses',requireAdmin,async(req,res)=>{try{if(!db.hasDatabase)return res.status(503).json({error:'Add DATABASE_URL to enable bookkeeping.'});const category=String(req.body?.category||'Other').trim(),description=String(req.body?.description||'').trim(),amount=Number(req.body?.amountGhs),date=String(req.body?.expenseDate||'').trim()||new Date().toISOString().slice(0,10),notes=String(req.body?.notes||'').trim();if(!description||!Number.isFinite(amount)||amount<0)return res.status(400).json({error:'Enter a description and valid amount.'});const r=await db.query('INSERT INTO expenses(category,description,amount_ghs,expense_date,notes) VALUES($1,$2,$3,$4,$5) RETURNING *',[category,description,amount,date,notes||null]);await db.query('INSERT INTO audit_logs(actor,action,entity_type,entity_id,details) VALUES($1,$2,$3,$4,$5)',['admin','create','expense',r.rows[0].id,JSON.stringify({category,amount})]);res.status(201).json({...r.rows[0],amountGhs:Number(r.rows[0].amount_ghs)});}catch(e){console.error(e);res.status(500).json({error:'Could not record expense.'});}});
-app.delete('/api/admin/expenses/:id',requireAdmin,async(req,res)=>{try{if(!db.hasDatabase)return res.status(503).json({error:'Database required.'});const r=await db.query('DELETE FROM expenses WHERE id=$1 RETURNING id',[req.params.id]);if(!r.rows[0])return res.status(404).json({error:'Expense not found.'});await db.query('INSERT INTO audit_logs(actor,action,entity_type,entity_id) VALUES($1,$2,$3,$4)',['admin','delete','expense',req.params.id]);res.json({ok:true});}catch(e){console.error(e);res.status(500).json({error:'Could not delete expense.'});}});
-app.get('/api/admin/reports',requireAdmin,async(req,res)=>{try{if(!db.hasDatabase)return res.status(503).json({error:'Database required.'});const from=String(req.query.from||'2000-01-01'),to=String(req.query.to||new Date().toISOString().slice(0,10));const [sales,products,expenses,summary]=await Promise.all([db.query(`SELECT DATE(created_at) AS day,COUNT(*)::int AS orders,COALESCE(SUM(amount_ghs),0) AS revenue FROM orders WHERE payment_status='paid' AND created_at::date BETWEEN $1 AND $2 GROUP BY 1 ORDER BY 1`,[from,to]),db.query(`SELECT oi.product_name,oi.product_id,SUM(oi.quantity)::int AS units,COALESCE(SUM(oi.unit_price_ghs*oi.quantity),0) AS revenue,COALESCE(SUM(oi.unit_cost_ghs*oi.quantity),0) AS cogs,COALESCE(SUM((oi.unit_price_ghs-oi.unit_cost_ghs)*oi.quantity),0) AS gross_profit FROM order_items oi JOIN orders o ON o.id=oi.order_id WHERE o.payment_status='paid' AND o.created_at::date BETWEEN $1 AND $2 GROUP BY oi.product_id,oi.product_name ORDER BY units DESC`,[from,to]),db.query(`SELECT category,COUNT(*)::int AS entries,COALESCE(SUM(amount_ghs),0) AS amount FROM expenses WHERE expense_date BETWEEN $1 AND $2 GROUP BY category ORDER BY amount DESC`,[from,to]),db.query(`SELECT COALESCE(SUM(o.amount_ghs),0) AS revenue,COALESCE(SUM(oi.unit_cost_ghs*oi.quantity),0) AS cogs,COALESCE((SELECT SUM(e.amount_ghs) FROM expenses e WHERE e.expense_date BETWEEN $1 AND $2),0) AS expenses,COALESCE((SELECT SUM(r.amount_ghs) FROM refunds r JOIN orders ro ON ro.id=r.order_id WHERE r.status='recorded' AND ro.created_at::date BETWEEN $1 AND $2),0) AS refunds FROM orders o JOIN order_items oi ON oi.order_id=o.id WHERE o.payment_status='paid' AND o.created_at::date BETWEEN $1 AND $2`,[from,to])]);const x=summary.rows[0];const revenue=Number(x.revenue),cogs=Number(x.cogs),expensesTotal=Number(x.expenses),refunds=Number(x.refunds);res.json({from,to,sales:sales.rows.map(r=>({...r,revenueGhs:Number(r.revenue)})),products:products.rows.map(r=>({...r,revenueGhs:Number(r.revenue),cogsGhs:Number(r.cogs),grossProfitGhs:Number(r.gross_profit)})),expenses:expenses.rows.map(r=>({...r,amountGhs:Number(r.amount)})),financials:{revenueGhs:revenue,cogsGhs:cogs,grossProfitGhs:revenue-cogs,refundsGhs:refunds,expensesGhs:expensesTotal,netProfitGhs:revenue-cogs-refunds-expensesTotal}});}catch(e){console.error(e);res.status(500).json({error:'Could not generate report.'});}});
-app.get('/api/admin/products',requireAdmin,async(req,res)=>{try{res.json({products:await getProducts(),usdToGhsRate:await getRate()});}catch(e){console.error(e);res.status(500).json({error:'Could not load products.'});}});
-app.post('/api/admin/products',requireAdmin,async(req,res)=>{try{if(!db.hasDatabase)return res.status(503).json({error:'Add DATABASE_URL to enable product management.'});const p=req.body||{},id=String(p.id||'').trim().toLowerCase().replace(/[^a-z0-9-]/g,'-');if(!id||!p.name)return res.status(400).json({error:'Product ID and name are required.'});const r=await db.query(`INSERT INTO products(id,name,size,category,description,highlights,key_ingredients,ingredients,how_to_use,image_url,price_ghs,price_usd,cost_ghs,stock,active,featured) VALUES($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,[id,String(p.name),String(p.size||''),String(p.category||'Body Care'),String(p.description||''),JSON.stringify(p.highlights||[]),JSON.stringify(p.keyIngredients||[]),String(p.ingredients||''),String(p.howToUse||''),String(p.image||''),Number(p.priceGhs||0),Number(p.priceUsd||0),Math.max(0,Number(p.costGhs||0)),Math.max(0,Math.floor(Number(p.stock||0))),p.active!==false,Boolean(p.featured)]);await db.query("INSERT INTO inventory_movements(product_id,movement_type,quantity,reason) VALUES($1,'initial_stock',$2,'Product created')",[id,Math.max(0,Math.floor(Number(p.stock||0)))]);await db.query('INSERT INTO audit_logs(actor,action,entity_type,entity_id,details) VALUES($1,$2,$3,$4,$5)', ['admin','create','product',id,JSON.stringify({name:p.name})]);res.status(201).json(cleanProduct(r.rows[0]));}catch(e){if(e.code==='23505')return res.status(409).json({error:'That product ID already exists.'});console.error(e);res.status(500).json({error:'Could not create product.'});}});
-app.put('/api/admin/products/:id',requireAdmin,async(req,res)=>{try{if(!db.hasDatabase)return res.status(503).json({error:'Add DATABASE_URL to enable product management.'});const p=req.body||{};const result=await db.withTransaction(async c=>{const old=await c.query('SELECT * FROM products WHERE id=$1 FOR UPDATE',[req.params.id]);if(!old.rows[0])throw Object.assign(new Error('Product not found.'),{statusCode:404});const newStock=Math.max(0,Math.floor(Number(p.stock??old.rows[0].stock)));const delta=newStock-Number(old.rows[0].stock);const r=await c.query(`UPDATE products SET name=$1,size=$2,category=$3,description=$4,highlights=$5::jsonb,key_ingredients=$6::jsonb,ingredients=$7,how_to_use=$8,image_url=$9,price_ghs=$10,price_usd=$11,cost_ghs=$12,stock=$13,active=$14,featured=$15,updated_at=NOW() WHERE id=$16 RETURNING *`,[String(p.name),String(p.size||''),String(p.category||'Body Care'),String(p.description||''),JSON.stringify(p.highlights||[]),JSON.stringify(p.keyIngredients||[]),String(p.ingredients||''),String(p.howToUse||''),String(p.image||''),Number(p.priceGhs),Number(p.priceUsd),Math.max(0,Number(p.costGhs)),newStock,p.active!==false,Boolean(p.featured),req.params.id]);if(delta)await c.query('INSERT INTO inventory_movements(product_id,movement_type,quantity,reason) VALUES($1,$2,$3,$4)',[req.params.id,'manual_adjustment',delta,String(p.stockReason||'Admin stock adjustment')]);await c.query('INSERT INTO audit_logs(actor,action,entity_type,entity_id,details) VALUES($1,$2,$3,$4,$5)',['admin','update','product',req.params.id,JSON.stringify({fields:Object.keys(p),stockDelta:delta})]);return cleanProduct(r.rows[0]);});res.json(result);}catch(e){console.error(e);res.status(e.statusCode||500).json({error:e.message||'Could not update product.'});}});
-app.delete('/api/admin/products/:id',requireAdmin,async(req,res)=>{try{if(!db.hasDatabase)return res.status(503).json({error:'Add DATABASE_URL to enable product management.'});const r=await db.query('UPDATE products SET active=FALSE,updated_at=NOW() WHERE id=$1 RETURNING id',[req.params.id]);if(!r.rows[0])return res.status(404).json({error:'Product not found.'});await db.query('INSERT INTO audit_logs(actor,action,entity_type,entity_id) VALUES($1,$2,$3,$4)',['admin','archive','product',req.params.id]);res.json({ok:true});}catch(e){console.error(e);res.status(500).json({error:'Could not archive product.'});}});
-app.put('/api/admin/settings/currency',requireAdmin,async(req,res)=>{try{const rate=Number(req.body?.usdToGhsRate);if(!Number.isFinite(rate)||rate<=0)return res.status(400).json({error:'Enter a valid USD-to-GHS rate.'});if(db.hasDatabase)await db.query("INSERT INTO site_settings(key,value) VALUES('currency',$1::jsonb) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value,updated_at=NOW()",[JSON.stringify({usdToGhsRate:rate})]);else{const v=db.readJson();v.currency.usdToGhsRate=rate;db.writeJson(v);}res.json({usdToGhsRate:rate});}catch(e){console.error(e);res.status(500).json({error:'Could not save currency settings.'});}});
+const app=express();
+app.use(express.json({limit:'8mb',verify:(req,res,buf)=>{req.rawBody=Buffer.from(buf)}}));
+app.use((req,res,next)=>{const cookie=req.headers.cookie||'';req.cookies=Object.fromEntries(cookie.split(';').filter(Boolean).map(v=>{const i=v.indexOf('=');return[i<0?v:v.slice(0,i).trim(),i<0?'':decodeURIComponent(v.slice(i+1))]}));next();});
+app.use(express.static(path.join(__dirname,'public')));
 
-function verifiedItems(input,currency,products){if(!Array.isArray(input)||!input.length)throw new Error('Your bag is empty.');return input.map(x=>{const p=products.find(v=>v.id===x.id&&v.active);const qty=Number(x.qty);if(!p||!Number.isInteger(qty)||qty<1||qty>20)throw new Error('One or more products in your bag is invalid.');return {id:p.id,name:p.name,size:p.size,image:p.image,qty,priceGhs:p.priceGhs,priceUsd:p.priceUsd,costGhs:p.costGhs,price:currency==='USD'?p.priceUsd:p.priceGhs};});}
-async function initializeWithDb(customer,items,currency,country,shippingProvider,shippingMethod,customerId=null){const rate=await getRate();const ps=await getProducts();const verified=verifiedItems(items,currency,ps);const shipping=await getSiteSetting('shipping',DEFAULT_SITE_SETTINGS.shipping);const zone=isGhana(country)?'ghana':'international';if(!shipping[zone]?.enabled)throw new Error('Delivery is not currently available to this country.');if(zone==='international'&&!((shipping.countries||[]).includes(country)))throw new Error('International delivery is not currently available to this country.');const providers=(shipping.providers||[]).filter(x=>x.enabled);const provider=providers.find(x=>x.id===shippingProvider)||providers.find(x=>x.id===(shipping.defaultProviderByZone||{})[zone])||providers[0];if(!provider)throw new Error('No delivery provider is currently available for this destination.');const shippingFeeGhs=Math.max(0,Number(shipping[zone]?.feeGhs||0));const subtotalDisplay=verified.reduce((s,i)=>s+i.price*i.qty,0);const displayShipping=currency==='USD'?Math.round(shippingFeeGhs/rate*100)/100:shippingFeeGhs;const subtotalGhs=currency==='USD'?Math.round(subtotalDisplay*rate*100)/100:subtotalDisplay;const amountGhs=Math.round((subtotalGhs+shippingFeeGhs)*100)/100;const displayTotal=Math.round((subtotalDisplay+displayShipping)*100)/100;const amountPesewas=Math.round(amountGhs*100);const ref=reference();return db.withTransaction(async c=>{const order=await c.query(`INSERT INTO orders(reference,customer_id,customer_name,customer_email,customer_phone,country_code,address,display_currency,subtotal_display,usd_to_ghs_rate,amount_ghs,amount_pesewas,currency,payment_status,order_status,paystack_reference,shipping_provider,shipping_method,shipping_fee_ghs) VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9,$10,$11,$12,'GHS','pending','pending_payment',$1,$13,$14,$15) RETURNING id,reference`,[ref,customerId,customer.name,customer.email,customer.phone,country,JSON.stringify({city:customer.city,area:customer.area,address:customer.address,note:customer.note}),currency,subtotalDisplay,rate,amountGhs,amountPesewas,provider.id,shippingMethod||provider.name,shippingFeeGhs]);for(const i of verified){await c.query('INSERT INTO order_items(order_id,product_id,product_name,size,image_url,unit_price_display,unit_price_ghs,unit_price_usd,unit_cost_ghs,quantity) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',[order.rows[0].id,i.id,i.name,i.size,i.image,i.price,i.priceGhs,i.priceUsd,i.costGhs,i.qty]);}return {reference:ref,amountPesewas,displayTotal,displayShipping,rate,amountGhs,verified,shippingProvider:provider.id,shippingMethod:shippingMethod||provider.name,shippingFeeGhs};});}
+app.get('/api/config',async(req,res)=>res.json({paystackReady:Boolean(PAYSTACK_SECRET_KEY),siteUrl:SITE_URL,delivery:await readSettings()}));
+app.get('/api/products',async(req,res)=>res.json({products:(await readProducts()).filter(p=>p.active!==false).map(p=>({...p,price:Number(p.price)}))}));
 
-async function currentCustomerId(req){if(!db.hasDatabase)return null;const raw=String(req.headers.authorization||'').replace(/^Bearer\s+/i,'');if(!raw)return null;const r=await db.query("SELECT customer_id FROM sessions WHERE token_hash=$1 AND expires_at>NOW()",[tokenHash(raw)]);return r.rows[0]?.customer_id||null;}
-app.post('/api/paystack/initialize',checkoutLimiter,async(req,res)=>{try{if(!PAYSTACK_SECRET_KEY)return res.status(503).json({error:'Paystack is not configured yet.'});const c=req.body?.customer||{},name=String(c.name||'').trim(),email=String(c.email||'').trim().toLowerCase(),phone=String(c.phone||'').trim(),city=String(c.city||'').trim(),area=String(c.area||'').trim(),address=String(c.address||'').trim();if(!name||!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)||!phone||!city||!area||!address)return res.status(400).json({error:'Please complete all required customer and delivery details.'});const country=countryFrom(req,c),currency=isGhana(country)?'GHS':'USD',shippingProvider=String(req.body?.shippingProvider||'').trim(),shippingMethod=String(req.body?.shippingMethod||'').trim();if(!db.hasDatabase)return res.status(503).json({error:'Checkout is waiting for the production database to be connected.'});let order;try{order=await initializeWithDb({...c,name,email,phone,city,area,address},req.body.items,currency,country,shippingProvider,shippingMethod,await currentCustomerId(req));}catch(e){return res.status(409).json({error:e.message});}
-const response=await fetch('https://api.paystack.co/transaction/initialize',{method:'POST',headers:{Authorization:`Bearer ${PAYSTACK_SECRET_KEY}`,'Content-Type':'application/json'},body:JSON.stringify({email,amount:String(order.amountPesewas),currency:'GHS',reference:order.reference,channels:['card','mobile_money'],callback_url:`${SITE_URL}/paystack/callback`,metadata:{orderReference:order.reference,customerName:name,country,shippingProvider:order.shippingProvider,shippingMethod:order.shippingMethod}})});const data=await response.json();if(!response.ok||!data.status){await db.query("UPDATE orders SET payment_status='initialization_failed',order_status='cancelled',updated_at=NOW() WHERE reference=$1",[order.reference]);return res.status(502).json({error:data.message||'Paystack could not initialize the payment.'});}await db.query('UPDATE orders SET paystack_reference=$1,updated_at=NOW() WHERE reference=$1',[order.reference]);res.json({authorizationUrl:data.data.authorization_url,reference:order.reference});}catch(e){console.error(e);res.status(500).json({error:'Unable to start payment. Please try again.'});}});
+app.post('/api/orders/initialize',async(req,res)=>{try{
+  if(!PAYSTACK_SECRET_KEY)return res.status(503).json({error:'Paystack is not connected yet. Add PAYSTACK_SECRET_KEY on the server.'});
+  const {customer,items:rawItems}=req.body||{};
+  if(!customer?.name||!customer?.phone||!customer?.email||!customer?.address||!customer?.city||!customer?.region||!customer?.deliveryZone)return res.status(400).json({error:'Please complete all delivery and contact fields.'});
+  if(!['accra','other_ghana'].includes(customer.deliveryZone))return res.status(400).json({error:'Please select a delivery zone.'});
+  const items=normalizeItems(rawItems);const subtotal=items.reduce((s,i)=>s+i.price*i.qty,0);const fee=deliveryFee(customer.deliveryZone);if(fee===null)return res.status(503).json({error:'Delivery fees have not been configured yet.'});
+  const total=subtotal+fee,orderNumber=makeOrderNumber(),reference=`sheara_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+  await createOrder({order_number:orderNumber,customer_name:customer.name.trim(),phone:customer.phone.trim(),email:customer.email.trim().toLowerCase(),address:customer.address.trim(),city:customer.city.trim(),region:customer.region.trim(),delivery_zone:customer.deliveryZone,items,subtotal,delivery_fee:fee,total,payment_status:'pending',order_status:'new',paystack_reference:reference,created_at:new Date().toISOString(),updated_at:new Date().toISOString()});
+  const response=await fetch('https://api.paystack.co/transaction/initialize',{method:'POST',headers:{Authorization:`Bearer ${PAYSTACK_SECRET_KEY}`,'Content-Type':'application/json'},body:JSON.stringify({email:customer.email.trim().toLowerCase(),amount:String(Math.round(total*100)),currency:'GHS',reference,callback_url:`${SITE_URL}/api/paystack/callback`,metadata:{order_number:orderNumber,customer_name:customer.name,phone:customer.phone,address:customer.address,city:customer.city,region:customer.region,delivery_zone:customer.deliveryZone,items,subtotal,delivery_fee:fee,total}})});
+  const data=await response.json();if(!response.ok||!data.status){await updateOrder(orderNumber,{payment_status:'failed'});return res.status(502).json({error:data.message||'Could not start Paystack checkout.'});}res.json({authorization_url:data.data.authorization_url,reference,order_number:orderNumber});
+}catch(e){console.error(e);res.status(400).json({error:e.message||'Unable to create order.'});}});
 
-async function verifyTransaction(ref){const r=await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(ref)}`,{headers:{Authorization:`Bearer ${PAYSTACK_SECRET_KEY}`}});const d=await r.json();if(!r.ok||!d.status)throw new Error(d.message||'Payment verification failed.');return d.data;}
-async function markPaid(ref,payment){return db.withTransaction(async c=>{const o=await c.query('SELECT * FROM orders WHERE reference=$1 FOR UPDATE',[ref]);if(!o.rows[0])return {ok:false,reason:'order_not_found'};const order=o.rows[0];if(order.payment_status==='paid')return {ok:true,stockAvailable:order.order_status!=='paid_stock_unavailable'};const amountMatches=payment.amount===order.amount_pesewas&&payment.currency===order.currency;const successful=payment.status==='success'&&amountMatches;if(!successful){await c.query("UPDATE orders SET payment_status='verification_failed',updated_at=NOW() WHERE id=$1",[order.id]);return {ok:false,reason:'verification_failed'};}await c.query("INSERT INTO payments(order_id,provider,provider_reference,provider_transaction_id,status,amount_pesewas,currency,raw_event) VALUES($1,'paystack',$2,$3,'success',$4,$5,$6::jsonb) ON CONFLICT(provider_reference) DO NOTHING",[order.id,ref,String(payment.id),payment.amount,payment.currency,JSON.stringify(payment)]);const items=await c.query('SELECT product_id,quantity FROM order_items WHERE order_id=$1',[order.id]);let stockAvailable=true;for(const item of items.rows){const stock=await c.query('SELECT stock FROM products WHERE id=$1 FOR UPDATE',[item.product_id]);if(!stock.rows[0]||Number(stock.rows[0].stock)<Number(item.quantity)){stockAvailable=false;break;}}if(stockAvailable){for(const item of items.rows){await c.query('UPDATE products SET stock=stock-$1,updated_at=NOW() WHERE id=$2',[item.quantity,item.product_id]);await c.query("INSERT INTO inventory_movements(product_id,movement_type,quantity,reference,reason) VALUES($1,'sale',$2,$3,$4)",[item.product_id,-Number(item.quantity),ref,'Paid order']);}await c.query("UPDATE orders SET payment_status='paid',order_status='processing',paystack_transaction_id=$1,payment_channel=$2,paid_at=$3,updated_at=NOW() WHERE id=$4",[String(payment.id),payment.channel||null,payment.paid_at||new Date().toISOString(),order.id]);return {ok:true,stockAvailable:true};}await c.query("UPDATE orders SET payment_status='paid',order_status='paid_stock_unavailable',paystack_transaction_id=$1,payment_channel=$2,paid_at=$3,updated_at=NOW() WHERE id=$4",[String(payment.id),payment.channel||null,payment.paid_at||new Date().toISOString(),order.id]);await c.query("INSERT INTO audit_logs(actor,action,entity_type,entity_id,details) VALUES($1,$2,$3,$4,$5)",["system","stock_exception","order",ref,JSON.stringify({reason:'Payment succeeded but stock was no longer available at final confirmation.'})]);return {ok:true,stockAvailable:false};});}
-app.get('/paystack/callback',async(req,res)=>{const ref=String(req.query.reference||'');if(!ref)return res.redirect('/payment-failed.html?reason=missing_reference');try{const payment=await verifyTransaction(ref);const result=await markPaid(ref,payment);res.redirect(result.ok?`/payment-success.html?reference=${encodeURIComponent(ref)}${result.stockAvailable?'':'&stockIssue=1'}`:`/payment-failed.html?reference=${encodeURIComponent(ref)}`);}catch(e){console.error(e);res.redirect(`/payment-failed.html?reference=${encodeURIComponent(ref)}&reason=verification_error`);}});
-app.post('/api/paystack/webhook',async(req,res)=>{if(!verifyPaystackSignature(req))return res.sendStatus(401);if(req.body?.event!=='charge.success'||!req.body?.data?.reference)return res.sendStatus(200);res.sendStatus(200);setImmediate(async()=>{try{await markPaid(String(req.body.data.reference),req.body.data);}catch(e){console.error('Webhook processing error',e);}});});
+app.get('/api/paystack/callback',async(req,res)=>{const reference=String(req.query.reference||'');if(!reference||!PAYSTACK_SECRET_KEY)return res.redirect('/checkout.html?payment=error');try{const response=await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`,{headers:{Authorization:`Bearer ${PAYSTACK_SECRET_KEY}`}});const data=await response.json();const order=await getOrderByReference(reference);if(data.status&&data.data?.status==='success'&&order&&Math.round(Number(order.total)*100)===Number(data.data.amount)){await updateOrder(order.order_number,{payment_status:'paid',order_status:'paid',paystack_transaction_id:String(data.data.id)});return res.redirect(`/success.html?order=${encodeURIComponent(order.order_number)}`);}if(order)await updateOrder(order.order_number,{payment_status:data.data?.status||'failed'});return res.redirect(`/checkout.html?payment=failed&order=${encodeURIComponent(order?.order_number||'')}`);}catch(e){console.error(e);return res.redirect('/checkout.html?payment=error');}});
 
-app.get('/api/order/:reference',async(req,res)=>{if(!db.hasDatabase)return res.status(503).json({error:'Unavailable.'});const r=await db.query('SELECT reference,payment_status,order_status,amount_ghs,currency FROM orders WHERE reference=$1',[req.params.reference]);if(!r.rows[0])return res.status(404).json({error:'Order not found.'});res.json({reference:r.rows[0].reference,paymentStatus:r.rows[0].payment_status,orderStatus:r.rows[0].order_status,amountGhs:Number(r.rows[0].amount_ghs),currency:r.rows[0].currency});});
+app.post('/api/paystack/webhook',async(req,res)=>{try{const signature=req.headers['x-paystack-signature'];const expected=crypto.createHmac('sha512',PAYSTACK_SECRET_KEY).update(req.rawBody||Buffer.from('')).digest('hex');if(!signature||signature!==expected)return res.sendStatus(401);const event=req.body;if(event.event==='charge.success'){const data=event.data;const order=await getOrderByReference(data.reference);if(order&&Math.round(Number(order.total)*100)===Number(data.amount))await updateOrder(order.order_number,{payment_status:'paid',order_status:'paid',paystack_transaction_id:String(data.id)});}return res.sendStatus(200);}catch(e){console.error('Webhook error',e);return res.sendStatus(500);}});
 
-// Stock is intentionally NOT reserved during cart or checkout. Inventory is deducted only after verified payment, inside the payment transaction.
+app.get('/api/orders/:orderNumber',async(req,res)=>{const o=await getOrderByNumber(req.params.orderNumber);if(!o)return res.status(404).json({error:'Order not found.'});res.json({order_number:o.order_number,payment_status:o.payment_status,order_status:o.order_status,total:Number(o.total),created_at:o.created_at});});
 
-app.use(express.static(__dirname,{maxAge:'1h',etag:true}));
-app.use((err,req,res,next)=>{console.error(err);if(!res.headersSent)res.status(500).json({error:'Something went wrong.'});});
-app.listen(PORT,()=>console.log(`Sheara v17 running at ${SITE_URL} | PostgreSQL: ${db.hasDatabase?'enabled':'development fallback'}`));
-process.on('SIGTERM',async()=>{await db.close();process.exit(0)});
+app.post('/api/admin/login',async(req,res)=>{const{password}=req.body||{};let ok=false;if(ADMIN_PASSWORD_HASH)ok=await bcrypt.compare(String(password||''),ADMIN_PASSWORD_HASH);else if(ADMIN_PASSWORD)ok=String(password||'')===ADMIN_PASSWORD;if(!ok)return res.status(401).json({error:'Incorrect password.'});const token=jwt.sign({role:'admin'},JWT_SECRET,{expiresIn:'7d'});res.setHeader('Set-Cookie',`sheara_admin=${encodeURIComponent(token)}; HttpOnly; Path=/; SameSite=Lax; Max-Age=604800${process.env.NODE_ENV==='production'?'; Secure':''}`);res.json({ok:true});});
+app.post('/api/admin/logout',(req,res)=>{res.setHeader('Set-Cookie','sheara_admin=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0');res.json({ok:true});});
+app.get('/api/admin/me',adminAuth,(req,res)=>res.json({ok:true}));
+app.get('/api/admin/orders',adminAuth,async(req,res)=>res.json({orders:await readOrders()}));
+app.patch('/api/admin/orders/:orderNumber',adminAuth,async(req,res)=>{const allowed=['new','processing','paid','shipped','completed','cancelled'];if(!allowed.includes(req.body?.order_status))return res.status(400).json({error:'Invalid order status.'});const o=await updateOrder(req.params.orderNumber,{order_status:req.body.order_status});if(!o)return res.status(404).json({error:'Order not found.'});res.json({order:o});});
+
+app.get('/api/admin/products',adminAuth,async(req,res)=>res.json({products:(await readProducts()).map(p=>({...p,price:Number(p.price)}))}));
+app.post('/api/admin/products',adminAuth,async(req,res)=>{try{const p=cleanProductInput(req.body);const id=String(req.body.id||`${Date.now()}_${crypto.randomBytes(3).toString('hex')}`).toLowerCase().replace(/[^a-z0-9_-]+/g,'-');if(await getProduct(id))return res.status(409).json({error:'That product ID already exists.'});const out=await upsertProduct({...p,id});globalThis.__products=await readProducts();res.json({product:{...out,price:Number(out.price)}});}catch(e){res.status(400).json({error:e.message});}});
+app.patch('/api/admin/products/:id',adminAuth,async(req,res)=>{try{const existing=await getProduct(req.params.id);if(!existing)return res.status(404).json({error:'Product not found.'});const p=cleanProductInput({...existing,...req.body});const out=await upsertProduct({...p,id:existing.id},existing.id);globalThis.__products=await readProducts();res.json({product:{...out,price:Number(out.price)}});}catch(e){res.status(400).json({error:e.message});}});
+app.delete('/api/admin/products/:id',adminAuth,async(req,res)=>{const existing=await getProduct(req.params.id);if(!existing)return res.status(404).json({error:'Product not found.'});await deleteProduct(req.params.id);globalThis.__products=await readProducts();res.json({ok:true});});
+app.get('/api/admin/settings',adminAuth,async(req,res)=>res.json({settings:await readSettings()}));
+app.patch('/api/admin/settings',adminAuth,async(req,res)=>{const a=Number(req.body?.delivery_accra),b=Number(req.body?.delivery_other_ghana);if(!Number.isFinite(a)||a<0||!Number.isFinite(b)||b<0)return res.status(400).json({error:'Enter valid delivery fees.'});const s={delivery_accra:a,delivery_other_ghana:b};await writeSettings(s);globalThis.__settings=s;res.json({settings:s});});
+
+app.get('/admin',(req,res)=>res.sendFile(path.join(__dirname,'public/admin/index.html')));
+app.get('/success.html',(req,res)=>res.sendFile(path.join(__dirname,'public/success.html')));
+
+ensureDb().then(async()=>{globalThis.__products=await readProducts();globalThis.__settings=await readSettings();app.listen(PORT,()=>console.log(`Sheara running on ${SITE_URL}`));}).catch(err=>{console.error(err);process.exit(1)});

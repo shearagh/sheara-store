@@ -1,40 +1,4 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Sheara Product | Nourish. Soften. Glow.</title>
-  <meta name="description" content="Shop Sheara shea-powered body care.">
-  <link rel="icon" href="assets/sheara-logo.png">
-  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css">
-</head>
-<body class="product-page">
-  <div class="announcement">Powered by shea. Rooted in nature.</div>
-  <header class="site-header">
-    <a class="brand" href="index.html#top"><img src="assets/sheara-logo.png" alt="Sheara"></a>
-    <button class="mobile-menu-toggle" id="mobileMenuToggle" aria-label="Open menu" aria-expanded="false"><span></span><span></span><span></span></button>
-    <nav class="desktop-nav"><a href="index.html#shop">Shop</a><a href="about.html">Our Story</a><a href="index.html#why">Why Sheara</a><a href="journal.html">Journal</a><a href="retailers.html">Partner With Us</a><a href="account.html">My Account</a></nav>
-    <nav class="mobile-nav" id="mobileNav" aria-label="Mobile navigation"><a href="index.html#shop">Shop</a><a href="index.html#story">Our Story</a><a href="index.html#why">Why Sheara</a><a href="index.html#journal">Journal</a><a href="retailers.html">Partner With Us</a><a href="account.html">My Account</a><a href="index.html#contact">Contact</a></nav>
-    <button class="cart-button" id="openCart" aria-label="Open shopping bag">Bag <span id="cartCount">0</span></button>
-  </header>
-
-  <main>
-    <section class="product-detail" id="productDetail"></section>
-    <section class="product-note">
-      <p class="eyebrow">SHEARA CARE</p>
-      <h2>Made for your everyday ritual.</h2>
-      <p>Sheara is a Ghanaian body-care brand built around shea and thoughtful everyday formulations. Explore the rest of the collection when you're ready.</p>
-      <a class="button button-dark" href="index.html#shop">Continue shopping</a>
-    </section>
-  </main>
-
-  <footer><div class="footer-brand"><img src="assets/sheara-logo.png" alt="Sheara"><p>Nourish. Soften. Glow.</p></div><div class="footer-links"><a href="index.html#shop">Shop</a><a href="index.html#story">Our Story</a><a href="retailers.html">Retailers</a><a href="index.html#contact">Contact</a></div><small>© <span id="year"></span> Sheara. All rights reserved.</small></footer>
-
-  <div class="overlay" id="overlay"></div>
-  <aside class="cart-drawer" id="cartDrawer" aria-label="Shopping bag"><div class="cart-header"><h2>Your bag</h2><button id="closeCart" aria-label="Close bag">×</button></div><div id="cartItems" class="cart-items"><p class="empty">Your bag is empty.</p></div><div class="cart-footer"><div class="subtotal"><span>Subtotal</span><strong id="subtotal">GHS 0.00</strong></div><p class="checkout-note">Delivery is arranged separately for now. Your delivery fee will be confirmed based on your location.</p><button class="button button-dark full" id="checkoutButton">Continue to checkout</button></div></aside>
-  <div class="checkout-modal" id="checkoutModal"><div class="checkout-box"><button class="modal-close" id="closeCheckout">×</button><p class="eyebrow">CHECKOUT</p><h2>Complete your order.</h2><form id="checkoutForm"><label>Full name<input name="name" required></label><label>Email<input name="email" type="email" required></label><label>Phone / WhatsApp<input name="phone" required></label><label>Delivery address<textarea name="address" rows="3" required></textarea></label><div class="checkout-summary"><span>Products</span><strong id="checkoutTotal">GHS 0.00</strong></div><button class="button button-dark full" type="submit">Proceed to payment</button><p class="small-note">Online payment will be connected before launch. Delivery charges will be calculated once your delivery partner is selected.</p></form></div></div>
-  <script src="pricing.js"></script><script src="app.js"></script>
-  <script src="product.js"></script>
-</body>
-</html>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Product | Sheara</title><link rel="stylesheet" href="./styles.css"></head><body>
+<div class="announce">Nourish. Soften. Glow. &nbsp; • &nbsp; Body care rooted in shea.</div><header class="site-header"><div class="wrap nav"><button class="hamb" id="hamb">☰</button><a class="brand" href="./index.html"><img src="./assets/sheara-logo.png" alt="Sheara"></a><nav class="navlinks"><a href="./shop.html">Shop</a><a href="./about.html">About</a><a href="./journal.html">Journal</a><a href="./contact.html">Contact</a></nav><div class="navright"><button class="bag" id="bag">Bag <b data-cart-count>0</b></button></div></div><div class="wrap mobile-nav" id="mobile-nav"><a href="./shop.html">Shop</a><a href="./about.html">About</a><a href="./journal.html">Journal</a><a href="./contact.html">Contact</a></div></header><main class="page-body wrap" id="product"></main><footer class="footer"><div class="wrap footer-grid"><div><div class="footer-logo">Sheara</div><p>Nourish. Soften. Glow.</p></div><div><h4>Explore</h4><a href="./shop.html">Shop</a><a href="./about.html">About</a><a href="./journal.html">Journal</a></div><div><h4>Connect</h4><a href="https://wa.me/233556201073">WhatsApp</a><a href="mailto:shearagh@gmail.com">shearagh@gmail.com</a></div></div><div class="wrap copyright">© 2026 Sheara. All rights reserved.</div></footer><aside class="drawer" id="drawer"><div class="drawer-head"><h2>Your bag</h2><button class="close" id="close-cart">×</button></div><div class="drawer-items" id="drawer-items"></div><div class="drawer-bottom"><div class="total"><span>Subtotal</span><strong id="drawer-total">GHS 0</strong></div><a class="pill checkout-link" href="./checkout.html">Checkout →</a></div></aside><div class="overlay" id="overlay"></div><script src="./app.js"></script><script>
+(async()=>{const id=new URLSearchParams(location.search).get('id')||'glow';let list=[{id:'glow',name:'Glow Body Cream',size:'500ml',price:65,img:'./assets/glow-body-cream.jpeg',description:'Rich body cream for deep nourishment, softness and a healthy-looking glow.'},{id:'lotion50',name:'Sheara Lotion',size:'50ml',price:15,img:'./assets/lotion-50ml.jpeg',description:'Lightweight moisture for soft, radiant-looking skin, enriched with niacinamide, sunflower oil and vitamin E.'},{id:'lotion100',name:'Sheara Lotion',size:'100ml',price:25,img:'./assets/lotion-100ml.jpeg',description:'Our everyday lotion in a larger size, enriched with niacinamide, sunflower oil and vitamin E.'}];try{const r=await fetch('./api/products');if(r.ok){const d=await r.json();if(d.products?.length)list=d.products}}catch{}const p=list.find(x=>x.id===id)||list[0];if(!p){document.getElementById('product').innerHTML='<p>Product not found.</p>';return}document.title=p.name+' | Sheara';document.getElementById('product').innerHTML=`<div class="products" style="grid-template-columns:1fr 1fr;align-items:center"><div class="product-image" style="aspect-ratio:1/1.05"><img src="${p.image_data||p.img}" alt="${p.name} ${p.size}"></div><div style="padding:30px 6vw"><div class="eyebrow" style="text-align:left">Sheara body care</div><h1 class="section-title" style="text-align:left;font-size:72px;margin:12px 0">${p.name}</h1><div class="size">${p.size}</div><p style="color:var(--muted);line-height:1.8;font-size:14px;max-width:470px">${p.description||''}</p><div style="font-size:20px;color:var(--wine);font-weight:600;margin:24px 0">GHS ${Number(p.price).toFixed(2).replace('.00','')}</div><button class="pill" onclick="add('${p.id}')">Add to bag →</button><div style="margin-top:28px;border-top:1px solid var(--line);padding-top:22px;color:var(--muted);font-size:12px;line-height:1.8">Thoughtfully crafted body care enriched with the goodness of shea butter.</div></div></div>`})()
+</script></body></html>
